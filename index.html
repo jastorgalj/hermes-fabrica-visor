@@ -74,6 +74,14 @@
   --color-run-running: #34d399;
   --color-run-warning: #fbbf24;
 
+  /* --- Timeline: colores por tipo de item (todos via var, cero literales fuera de :root) --- */
+  --color-tl-run-start:     var(--color-status-running);
+  --color-tl-run-end-done:  var(--color-status-done);
+  --color-tl-run-end-fail:  var(--color-status-blocked);
+  --color-tl-run-end-other: var(--color-surface-2);
+  --color-tl-comment:       var(--color-surface-2);
+  --color-tl-event:         var(--color-surface);
+
   /* --- Tipografia (sans para el cuerpo; mono solo para ids) --- */
   --theme-font-sans: system-ui, -apple-system, "Segoe UI", Roboto,
                      "Helvetica Neue", Arial, sans-serif;
@@ -579,6 +587,178 @@ button {
   text-align: center;
   padding: 2rem;
 }
+
+/* =========================================================
+   TIMELINE DE CARD
+   ========================================================= */
+.timeline-section {
+  margin-top: 1rem;
+}
+
+.timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.timeline-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-dim);
+  font-weight: 600;
+}
+
+.timeline-hb-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+}
+
+.timeline-hb-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  cursor: pointer;
+}
+
+.timeline-hb-controls input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.timeline-loading {
+  color: var(--color-text-dim);
+  font-size: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.timeline-empty {
+  color: var(--color-text-dim);
+  font-size: 0.75rem;
+  padding: 0.5rem 0;
+  font-style: italic;
+}
+
+.timeline-truncated {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  padding: 0.5rem 0;
+  font-style: italic;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.4rem;
+  align-items: flex-start;
+}
+
+.timeline-item-icon {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  margin-top: 0.05rem;
+}
+
+.timeline-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-item-meta {
+  font-size: 0.6rem;
+  color: var(--color-text-dim);
+  margin-bottom: 0.15rem;
+}
+
+.timeline-item-text {
+  font-size: 0.7rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.timeline-item-expand {
+  font-size: 0.6rem;
+  color: var(--color-accent);
+  margin-top: 0.2rem;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+}
+
+.timeline-item-expand:hover {
+  text-decoration: underline;
+}
+
+/* Colores por tipo — solo via variables de :root */
+.tl-run-start  { background: var(--color-tl-run-start); }
+.tl-run-end-done  { background: var(--color-tl-run-end-done); }
+.tl-run-end-fail  { background: var(--color-tl-run-end-fail); }
+.tl-run-end-other { background: var(--color-tl-run-end-other); }
+.tl-comment    { background: var(--color-tl-comment); }
+.tl-event      { background: var(--color-tl-event); }
+
+/* =========================================================
+   LOG DE WORKER (acordeón)
+   ========================================================= */
+.worker-log-section {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.worker-log-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: var(--color-surface);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.worker-log-toggle:hover {
+  background: var(--color-surface-2);
+}
+
+.worker-log-caret {
+  font-size: 0.6rem;
+  color: var(--color-text-dim);
+}
+
+.worker-log-body {
+  display: none;
+  padding: 0.5rem;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+}
+
+.worker-log-body.open {
+  display: block;
+}
+
+.worker-log-content {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.4;
+}
 </style>
 </head>
 <body>
@@ -667,6 +847,14 @@ let activeGroupKey = null;
 let activeTaskId   = null;
 let groupData      = null;  // { key, tasks, links }
 let showArchived   = false;
+
+// Estado de timeline: cargado solo la primera vez por task
+let timelineLoadedFor  = null;  // task_id cuyo timeline ya está en el DOM
+let timelineSection    = null;  // elemento DOM del timeline
+
+// Estado de worker-log: cargado solo al expandir
+let workerLogLoadedFor = null;  // task_id cuyo log ya se cargó
+let workerLogSection   = null;  // elemento DOM del acordeón
 
 /* =========================================================
    HELPERS DE FETCH (con timeout)
@@ -1033,12 +1221,302 @@ function redrawArrows() {
 }
 
 /* =========================================================
+   HELPERS DE FECHA
+   ========================================================= */
+function formatTs(unixSec) {
+  if (!unixSec) return '';
+  const d = new Date(unixSec * 1000);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  return `${hh}:${mm}:${ss} ${dd}/${mo}`;
+}
+
+/* =========================================================
+   TIMELINE: RENDER DE UN ITEM
+   ========================================================= */
+function buildTimelineItem(item) {
+  const FAIL_OUTCOMES = new Set(['crashed', 'rate_limited', 'reclaimed', 'gave_up']);
+
+  const el = document.createElement('div');
+  el.className = 'timeline-item';
+
+  // Icono y clase de color (via CSS var, sin literales)
+  let icon = '📌';
+  let colorClass = 'tl-event';
+
+  if (item.type === 'run_start') {
+    icon = '▶';
+    colorClass = 'tl-run-start';
+  } else if (item.type === 'run_end') {
+    icon = '■';
+    if (item.outcome === 'completed' || item.outcome === 'done') {
+      colorClass = 'tl-run-end-done';
+    } else if (item.outcome && FAIL_OUTCOMES.has(item.outcome)) {
+      colorClass = 'tl-run-end-fail';
+    } else {
+      colorClass = 'tl-run-end-other';
+    }
+  } else if (item.type === 'comment') {
+    icon = '💬';
+    colorClass = 'tl-comment';
+  }
+  el.classList.add(colorClass);
+
+  const iconEl = document.createElement('span');
+  iconEl.className = 'timeline-item-icon';
+  iconEl.textContent = icon;    // emoji estático
+
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'timeline-item-body';
+
+  // Meta: timestamp + perfil/kind/author
+  const metaEl = document.createElement('div');
+  metaEl.className = 'timeline-item-meta';
+  let metaText = formatTs(item.ts);
+  if (item.type === 'run_start' && item.profile) {
+    metaText += ' · ' + item.profile;   // ← dato API via textContent
+  } else if (item.type === 'run_end' && item.outcome) {
+    metaText += ' · ' + item.outcome;
+  } else if (item.type === 'comment' && item.author) {
+    metaText += ' · ' + item.author;
+  } else if (item.type === 'event' && item.kind) {
+    metaText += ' · ' + item.kind;
+  }
+  metaEl.textContent = metaText;  // ← textContent
+  bodyEl.appendChild(metaEl);
+
+  // Texto principal (body para comment, summary para run_end, etc.)
+  if (item.type === 'comment' && item.body != null) {
+    const LIMIT = 300;
+    const fullText = String(item.body);
+    const textEl = document.createElement('div');
+    textEl.className = 'timeline-item-text';
+
+    if (fullText.length <= LIMIT) {
+      textEl.textContent = fullText;    // ← textContent
+      bodyEl.appendChild(textEl);
+    } else {
+      // Truncar con botón Expandir / Colapsar
+      let expanded = false;
+      textEl.textContent = fullText.slice(0, LIMIT) + '…';    // ← textContent
+
+      const expandBtn = document.createElement('button');
+      expandBtn.className = 'timeline-item-expand';
+      expandBtn.textContent = 'Expandir';
+
+      expandBtn.addEventListener('click', () => {
+        expanded = !expanded;
+        if (expanded) {
+          textEl.textContent = fullText;        // ← textContent
+          expandBtn.textContent = 'Colapsar';
+        } else {
+          textEl.textContent = fullText.slice(0, LIMIT) + '…';  // ← textContent
+          expandBtn.textContent = 'Expandir';
+        }
+      });
+
+      bodyEl.appendChild(textEl);
+      bodyEl.appendChild(expandBtn);
+    }
+  } else if (item.type === 'run_end' && item.summary) {
+    const textEl = document.createElement('div');
+    textEl.className = 'timeline-item-text';
+    textEl.textContent = item.summary;    // ← textContent
+    bodyEl.appendChild(textEl);
+  }
+
+  el.appendChild(iconEl);
+  el.appendChild(bodyEl);
+  return el;
+}
+
+/* =========================================================
+   TIMELINE: RENDER DE LA SECCIÓN COMPLETA
+   ========================================================= */
+function renderTimelineContent(data, container, taskId) {
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  // Header: título + controls de heartbeats
+  const headerEl = document.createElement('div');
+  headerEl.className = 'timeline-header';
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'timeline-title';
+  titleEl.textContent = 'Línea de tiempo';  // estático
+
+  const hbCtrls = document.createElement('div');
+  hbCtrls.className = 'timeline-hb-controls';
+
+  const hbCount = document.createElement('span');
+  hbCount.textContent = `${data.heartbeat_count} heartbeats`;  // numérico API
+
+  const hbLabel = document.createElement('label');
+  const hbCheck = document.createElement('input');
+  hbCheck.type = 'checkbox';
+  const hbTxt = document.createElement('span');
+  hbTxt.textContent = 'Mostrar';  // estático
+  hbLabel.appendChild(hbCheck);
+  hbLabel.appendChild(hbTxt);
+
+  hbCtrls.appendChild(hbCount);
+  hbCtrls.appendChild(hbLabel);
+
+  headerEl.appendChild(titleEl);
+  headerEl.appendChild(hbCtrls);
+  container.appendChild(headerEl);
+
+  // Contenedor de items (se reemplaza al toggle)
+  const itemsWrapper = document.createElement('div');
+  container.appendChild(itemsWrapper);
+
+  function renderItems(items, truncated) {
+    while (itemsWrapper.firstChild) itemsWrapper.removeChild(itemsWrapper.firstChild);
+    if (!items || items.length === 0) {
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'timeline-empty';
+      emptyEl.textContent = 'Sin eventos registrados.';  // estático
+      itemsWrapper.appendChild(emptyEl);
+      return;
+    }
+    for (const item of items) {
+      itemsWrapper.appendChild(buildTimelineItem(item));
+    }
+    if (truncated) {
+      const truncEl = document.createElement('div');
+      truncEl.className = 'timeline-truncated';
+      truncEl.textContent = `Mostrando ${items.length} items (limite alcanzado)`;
+      itemsWrapper.appendChild(truncEl);
+    }
+  }
+
+  renderItems(data.items, data.truncated);
+
+  // Toggle heartbeats
+  hbCheck.addEventListener('change', async () => {
+    if (activeTaskId !== taskId) return;
+    const withHb = hbCheck.checked;
+    const url = `/api/tasks/${encodeURIComponent(taskId)}/timeline?limit=200` +
+                (withHb ? '&heartbeats=true' : '');
+    const result = await fetchJson(url);
+    if (!result.ok || activeTaskId !== taskId) return;
+    hbCount.textContent = `${result.data.heartbeat_count} heartbeats`;
+    renderItems(result.data.items, result.data.truncated);
+  });
+
+  timelineLoadedFor = taskId;
+}
+
+/* =========================================================
+   TIMELINE: FETCH BAJO DEMANDA
+   ========================================================= */
+async function fetchTimeline(taskId, container) {
+  const result = await fetchJson(
+    `/api/tasks/${encodeURIComponent(taskId)}/timeline?limit=200`
+  );
+  if (activeTaskId !== taskId) return;  // la task cambió mientras cargaba
+
+  if (!result.ok) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    const errEl = document.createElement('div');
+    errEl.className = 'timeline-empty';
+    errEl.textContent = 'No se pudo cargar la línea de tiempo.';  // estático
+    container.appendChild(errEl);
+    return;
+  }
+
+  renderTimelineContent(result.data, container, taskId);
+}
+
+/* =========================================================
+   WORKER-LOG: SECCIÓN ACORDEÓN
+   ========================================================= */
+function createWorkerLogSection(taskId) {
+  const section = document.createElement('div');
+  section.className = 'worker-log-section';
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.className = 'worker-log-toggle';
+
+  const toggleLabel = document.createElement('span');
+  toggleLabel.textContent = 'Log de worker';  // estático
+
+  const caret = document.createElement('span');
+  caret.className = 'worker-log-caret';
+  caret.textContent = '▼';
+
+  toggleBtn.appendChild(toggleLabel);
+  toggleBtn.appendChild(caret);
+  section.appendChild(toggleBtn);
+
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'worker-log-body';
+  section.appendChild(bodyEl);
+
+  let logLoaded = false;
+  let isOpen = false;
+
+  async function loadLog() {
+    while (bodyEl.firstChild) bodyEl.removeChild(bodyEl.firstChild);
+    const loadingEl = document.createElement('div');
+    loadingEl.className = 'timeline-loading';
+    loadingEl.textContent = 'Cargando log…';  // estático
+    bodyEl.appendChild(loadingEl);
+
+    const result = await fetchJson(
+      `/api/tasks/${encodeURIComponent(taskId)}/worker-log?tail=100`
+    );
+
+    while (bodyEl.firstChild) bodyEl.removeChild(bodyEl.firstChild);
+
+    if (!result.ok) {
+      const noLogEl = document.createElement('div');
+      noLogEl.className = 'timeline-empty';
+      noLogEl.textContent = 'Sin log disponible.';  // estático
+      bodyEl.appendChild(noLogEl);
+      return;
+    }
+
+    const lines = result.data.lines || [];
+    const preEl = document.createElement('pre');
+    preEl.className = 'worker-log-content';
+    preEl.textContent = lines.join('\n');  // ← textContent con datos API
+    bodyEl.appendChild(preEl);
+
+    logLoaded = true;
+    workerLogLoadedFor = taskId;
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    isOpen = !isOpen;
+    caret.textContent = isOpen ? '▲' : '▼';
+    bodyEl.classList.toggle('open', isOpen);
+    if (isOpen && !logLoaded) {
+      loadLog();
+    }
+  });
+
+  return section;
+}
+
+/* =========================================================
    SELECCIONAR TASK (ABRIR PANEL)
    ========================================================= */
 function selectTask(taskId, cardEl) {
   // Deseleccionar todas
   document.querySelectorAll('.task-card').forEach(c => c.classList.remove('selected'));
   cardEl.classList.add('selected');
+
+  // Si cambia la task, resetear estado de timeline y log
+  if (activeTaskId !== taskId) {
+    timelineLoadedFor  = null;
+    timelineSection    = null;
+    workerLogLoadedFor = null;
+    workerLogSection   = null;
+  }
+
   activeTaskId = taskId;
 
   // Mostrar panel
@@ -1054,6 +1532,11 @@ function selectTask(taskId, cardEl) {
 async function loadTaskDetail(taskId) {
   const body = document.getElementById('detail-body');
 
+  // Guardar scroll y secciones ya cargadas para esta task
+  const scrollTop = body.scrollTop;
+  const prevTimeline = (timelineLoadedFor === taskId) ? timelineSection : null;
+  const prevWorkerLog = (workerLogLoadedFor === taskId) ? workerLogSection : null;
+
   // Limpiar body
   while (body.firstChild) body.removeChild(body.firstChild);
 
@@ -1063,8 +1546,11 @@ async function loadTaskDetail(taskId) {
   body.appendChild(loadingEl);
 
   const result = await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}`);
+  if (activeTaskId !== taskId) return;  // task cambió mientras cargaba
+
+  while (body.firstChild) body.removeChild(body.firstChild);
+
   if (!result.ok || !result.data) {
-    while (body.firstChild) body.removeChild(body.firstChild);
     const errEl = document.createElement('div');
     errEl.className = 'detail-task-title';
     errEl.textContent = 'Error al cargar los detalles';
@@ -1073,8 +1559,6 @@ async function loadTaskDetail(taskId) {
   }
 
   const task = result.data;
-
-  while (body.firstChild) body.removeChild(body.firstChild);
 
   // Título
   const titleEl = document.createElement('div');
@@ -1165,6 +1649,39 @@ async function loadTaskDetail(taskId) {
 
     body.appendChild(section);
   }
+
+  // --- SECCIÓN DE TIMELINE (bajo demanda, solo la primera vez) ---
+  let tlSection;
+  if (prevTimeline) {
+    // Reusar sección ya cargada (preserva contenido y scroll de la propia sección)
+    tlSection = prevTimeline;
+  } else {
+    tlSection = document.createElement('div');
+    tlSection.className = 'timeline-section';
+
+    const loadingTl = document.createElement('div');
+    loadingTl.className = 'timeline-loading';
+    loadingTl.textContent = 'Cargando línea de tiempo…';
+    tlSection.appendChild(loadingTl);
+
+    timelineSection = tlSection;
+    // Iniciar fetch asíncrono (NO bloquea; NO se llama en el poll de 10 s)
+    fetchTimeline(taskId, tlSection);
+  }
+  body.appendChild(tlSection);
+
+  // --- SECCIÓN DE WORKER-LOG (acordeón, carga solo al expandir) ---
+  let logSection;
+  if (prevWorkerLog) {
+    logSection = prevWorkerLog;
+  } else {
+    logSection = createWorkerLogSection(taskId);
+    workerLogSection = logSection;
+  }
+  body.appendChild(logSection);
+
+  // Restaurar posición de scroll del panel
+  body.scrollTop = scrollTop;
 }
 
 /* =========================================================

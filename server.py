@@ -10,7 +10,7 @@ import json
 import pathlib
 import sqlite3
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import unquote
+from urllib.parse import unquote, parse_qs
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -23,6 +23,23 @@ OPTIONAL_COLS = frozenset({'block_kind', 'model_override', 'provider_override'})
 REQUIRED_TASK_COLS = (
     'id', 'title', 'assignee', 'status', 'created_at', 'completed_at'
 )
+
+# Validación de task_id en worker-log (el único que arma rutas de archivo)
+TASK_ID_RE = re.compile(r'^t_[0-9a-f]+$')
+
+# Claves permitidas en metadata_excerpt de run_end
+METADATA_EXCERPT_KEYS = frozenset({
+    'verification', 'friccion', 'commit_message',
+    'commit_message_source', 'review_outcome',
+})
+
+TAIL_DEFAULT = 100
+TAIL_MIN = 1
+TAIL_MAX = 500
+
+TIMELINE_LIMIT_DEFAULT = 200
+TIMELINE_LIMIT_MIN = 1
+TIMELINE_LIMIT_MAX = 500
 
 # ---------------------------------------------------------------------------
 # Detección de ruta de DB
@@ -76,6 +93,25 @@ def get_task_cols(conn: sqlite3.Connection) -> set:
     """
     cur = conn.execute('PRAGMA table_info(tasks)')
     return {row['name'] for row in cur.fetchall()}
+
+
+def _get_run_cols(conn: sqlite3.Connection) -> set:
+    """Retorna el conjunto de nombres de columnas de task_runs."""
+    cur = conn.execute('PRAGMA table_info(task_runs)')
+    return {row['name'] for row in cur.fetchall()}
+
+
+# ---------------------------------------------------------------------------
+# Detección del directorio de logs de worker
+# ---------------------------------------------------------------------------
+
+def find_logs_dir(db_path: str) -> str:
+    """Detecta el directorio de logs de worker.
+    Prioridad: (1) KANBAN_LOGS_DIR env; (2) {dirname(db_path)}/kanban/logs.
+    """
+    if logs_dir := os.environ.get('KANBAN_LOGS_DIR'):
+        return logs_dir
+    return str(pathlib.Path(db_path).parent / 'kanban' / 'logs')
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +300,173 @@ def api_task(
 
 
 # ---------------------------------------------------------------------------
+# Endpoints nuevos: timeline y worker-log
+# ---------------------------------------------------------------------------
+
+def api_task_timeline(
+    conn: sqlite3.Connection,
+    task_id: str,
+    limit: int = TIMELINE_LIMIT_DEFAULT,
+    heartbeats: bool = False,
+    run_known_cols: set | None = None,
+) -> dict | None:
+    """GET /api/tasks/{id}/timeline — Timeline mezclado de runs, comentarios y eventos.
+    Retorna None si la task no existe (→ 404).
+    Orden: (ts ASC, table_priority ASC, row_id ASC).
+      table_priority: runs=0, comentarios=1, eventos=2.
+    heartbeat_count siempre presente; heartbeats excluidos por defecto de items.
+    """
+    cur = conn.execute('SELECT id FROM tasks WHERE id = ?', [task_id])
+    if cur.fetchone() is None:
+        return None  # 404
+
+    if run_known_cols is None:
+        run_known_cols = _get_run_cols(conn)
+
+    # Contar heartbeats siempre (independiente del filtro)
+    cur = conn.execute(
+        "SELECT count(*) FROM task_events WHERE task_id = ? AND kind = 'heartbeat'",
+        [task_id],
+    )
+    heartbeat_count = cur.fetchone()[0]
+
+    items: list[dict] = []
+
+    # --- Runs: run_start y run_end ---
+    has_summary  = 'summary'  in run_known_cols
+    has_metadata = 'metadata' in run_known_cols
+
+    extra_cols = []
+    if has_summary:
+        extra_cols.append('summary')
+    if has_metadata:
+        extra_cols.append('metadata')
+
+    run_cols_str = ', '.join(['id', 'profile', 'outcome', 'started_at', 'ended_at'] + extra_cols)
+    cur = conn.execute(
+        f'SELECT {run_cols_str} FROM task_runs WHERE task_id = ?',
+        [task_id],
+    )
+    for row in cur.fetchall():
+        run = dict(row)
+
+        if run.get('started_at') is not None:
+            items.append({
+                'ts':              run['started_at'],
+                '_tp':             0,
+                '_rid':            run['id'],
+                'type':            'run_start',
+                'run_id':          run['id'],
+                'profile':         run.get('profile'),
+            })
+
+        if run.get('ended_at') is not None:
+            end_item: dict = {
+                'ts':      run['ended_at'],
+                '_tp':     3,
+                '_rid':    run['id'],
+                'type':    'run_end',
+                'run_id':  run['id'],
+                'outcome': run.get('outcome'),
+            }
+            if has_summary:
+                raw = run.get('summary') or ''
+                end_item['summary'] = raw[:500]
+            if has_metadata:
+                meta_raw = run.get('metadata') or '{}'
+                try:
+                    meta = json.loads(meta_raw) if meta_raw else {}
+                except (json.JSONDecodeError, TypeError):
+                    meta = {}
+                end_item['metadata_excerpt'] = {
+                    k: v for k, v in meta.items() if k in METADATA_EXCERPT_KEYS
+                }
+            items.append(end_item)
+
+    # --- Comentarios ---
+    cur = conn.execute(
+        'SELECT id, author, body, created_at FROM task_comments WHERE task_id = ?',
+        [task_id],
+    )
+    for row in cur.fetchall():
+        c = dict(row)
+        items.append({
+            'ts':     c['created_at'],
+            '_tp':    2,
+            '_rid':   c['id'],
+            'type':   'comment',
+            'run_id': None,
+            'author': c.get('author'),
+            'body':   c.get('body'),
+        })
+
+    # --- Eventos (opcional filtro de heartbeats) ---
+    hb_cond = '' if heartbeats else "AND kind != 'heartbeat'"
+    cur = conn.execute(
+        f"SELECT id, kind, payload, created_at FROM task_events WHERE task_id = ? {hb_cond}",
+        [task_id],
+    )
+    for row in cur.fetchall():
+        e = dict(row)
+        items.append({
+            'ts':     e['created_at'],
+            '_tp':    1,
+            '_rid':   e['id'],
+            'type':   'event',
+            'run_id': None,
+            'kind':   e.get('kind'),
+            'payload': e.get('payload'),
+        })
+
+    # Ordenar por (ts, table_priority, row_id)
+    items.sort(key=lambda x: (x['ts'] or 0, x['_tp'], x['_rid']))
+
+    truncated = len(items) > limit
+    items = items[:limit]
+
+    # Eliminar campos internos de ordenamiento
+    for item in items:
+        item.pop('_tp', None)
+        item.pop('_rid', None)
+
+    return {
+        'task_id':         task_id,
+        'heartbeat_count': heartbeat_count,
+        'truncated':       truncated,
+        'items':           items,
+    }
+
+
+def api_task_worker_log(
+    task_id: str,
+    tail: int,
+    logs_dir: str,
+) -> dict | None:
+    """Lee las últimas `tail` líneas del log de worker.
+    Retorna None si el archivo no existe (→ 404).
+    `tail` se recorta a [TAIL_MIN, TAIL_MAX].
+    """
+    tail = max(TAIL_MIN, min(TAIL_MAX, tail))
+
+    log_path = pathlib.Path(logs_dir) / f'{task_id}.log'
+    if not log_path.exists():
+        return None  # 404
+
+    with open(log_path, 'r', encoding='utf-8', errors='replace') as fh:
+        all_lines = fh.readlines()
+
+    total = len(all_lines)
+    truncated = total > tail
+    lines = [line.rstrip('\n') for line in all_lines[-tail:]]
+
+    return {
+        'task_id':   task_id,
+        'lines':     lines,
+        'truncated': truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Servidor HTTP
 # ---------------------------------------------------------------------------
 
@@ -271,7 +474,14 @@ class KanbanHandler(BaseHTTPRequestHandler):
     """Maneja peticiones HTTP para el visor. El servidor inyecta conn y cols."""
 
     def do_GET(self):
-        path = self.path.split('?')[0]
+        # Separar path de query string
+        if '?' in self.path:
+            raw_path, raw_query = self.path.split('?', 1)
+        else:
+            raw_path, raw_query = self.path, ''
+
+        path = raw_path
+        params = parse_qs(raw_query)
 
         if path in ('/', '/index.html'):
             self._serve_index()
@@ -281,6 +491,46 @@ class KanbanHandler(BaseHTTPRequestHandler):
         elif m := re.match(r'^/api/group/(.+)$', path):
             key = unquote(m.group(1))
             data = api_group(self.server.conn, self.server.known_cols, key)
+            if data is None:
+                self._json(404, {'error': 'not found'})
+            else:
+                self._json(200, data)
+        elif m := re.match(r'^/api/tasks/([^/]+)/timeline$', path):
+            task_id = unquote(m.group(1))
+            try:
+                limit = int(params.get('limit', [str(TIMELINE_LIMIT_DEFAULT)])[0])
+            except (ValueError, IndexError):
+                limit = TIMELINE_LIMIT_DEFAULT
+            limit = max(TIMELINE_LIMIT_MIN, min(TIMELINE_LIMIT_MAX, limit))
+            heartbeats = params.get('heartbeats', ['false'])[0].lower() == 'true'
+
+            data = api_task_timeline(
+                self.server.conn,
+                task_id,
+                limit,
+                heartbeats,
+                self.server.run_known_cols,
+            )
+            if data is None:
+                self._json(404, {'error': 'not found'})
+            else:
+                self._json(200, data)
+        elif m := re.match(r'^/api/tasks/([^/]+)/worker-log$', path):
+            raw_id = unquote(m.group(1))
+            if not TASK_ID_RE.fullmatch(raw_id):
+                self._json(400, {'error': 'invalid task_id'})
+                return
+            # Verificar existencia en DB (id válido pero inexistente → 404)
+            cur = self.server.conn.execute('SELECT id FROM tasks WHERE id = ?', [raw_id])
+            if cur.fetchone() is None:
+                self._json(404, {'error': 'not found'})
+                return
+            try:
+                tail = int(params.get('tail', [str(TAIL_DEFAULT)])[0])
+            except (ValueError, IndexError):
+                tail = TAIL_DEFAULT
+
+            data = api_task_worker_log(raw_id, tail, self.server.logs_dir)
             if data is None:
                 self._json(404, {'error': 'not found'})
             else:
@@ -333,6 +583,8 @@ class KanbanServer(HTTPServer):
         super().__init__(server_address, RequestHandlerClass)
         self.conn = open_db(db_path)
         self.known_cols = get_task_cols(self.conn)
+        self.run_known_cols = _get_run_cols(self.conn)
+        self.logs_dir = find_logs_dir(db_path)
 
 
 # ---------------------------------------------------------------------------
