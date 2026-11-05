@@ -10,6 +10,7 @@ import json
 import pathlib
 import sqlite3
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import unquote
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -278,14 +279,14 @@ class KanbanHandler(BaseHTTPRequestHandler):
             data = api_groups(self.server.conn, self.server.known_cols)
             self._json(200, data)
         elif m := re.match(r'^/api/group/(.+)$', path):
-            key = m.group(1)
+            key = unquote(m.group(1))
             data = api_group(self.server.conn, self.server.known_cols, key)
             if data is None:
                 self._json(404, {'error': 'not found'})
             else:
                 self._json(200, data)
         elif m := re.match(r'^/api/tasks/(.+)$', path):
-            task_id = m.group(1)
+            task_id = unquote(m.group(1))
             data = api_task(self.server.conn, self.server.known_cols, task_id)
             if data is None:
                 self._json(404, {'error': 'not found'})

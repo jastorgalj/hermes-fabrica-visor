@@ -3,12 +3,17 @@ Tests de la API del visor-v1.
 Todos los tests usan una DB SQLite temporal con el mismo esquema que kanban.db.
 Sin dependencias externas: solo stdlib.
 """
+import json
 import os
 import sys
 import pathlib
 import sqlite3
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.parse
+import urllib.request
 from unittest.mock import patch
 
 # Agregar el directorio padre al path para importar server
@@ -565,6 +570,116 @@ class TestFindDb(unittest.TestCase):
                 server.find_db()
             # Debe salir con código no-cero
             self.assertNotEqual(ctx.exception.code, 0)
+
+
+# ---------------------------------------------------------------------------
+# Tests de decodificación URL en los endpoints HTTP
+# ---------------------------------------------------------------------------
+
+class TestUrlDecodingHttp(unittest.TestCase):
+    """
+    Los endpoints /api/group/{key} y /api/tasks/{id} deben decodificar
+    caracteres URL-encoded en el segmento del path antes de buscar en la DB.
+
+    Protocolo TDD:
+      RED  → sin unquote en server.py, el test falla (404 en vez de 200).
+      GREEN → con unquote, el test pasa.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.db_path, cls.wconn = make_db(SCHEMA_FULL)
+        # Grupo cuya clave contiene <, > y &  (el título incluye espacio natural)
+        # _group_key('<b>XSS</b>&test explorar') → '<b>XSS</b>&test'
+        # Task ID con espacio para probar unquote en /api/tasks/{id}
+        cls.wconn.executemany(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?)",
+            [
+                ('t_sp ec ial',
+                 '<b>XSS</b>&test explorar',
+                 'coder', 'running', None, None, None, 1000, None),
+                ('t_normal',
+                 'MTD-360 explorar',
+                 'coder', 'done', None, None, None, 1001, 2000),
+            ]
+        )
+        cls.wconn.commit()
+
+        from server import KanbanServer, KanbanHandler
+        # Crear el servidor DENTRO del hilo que sirve, para que la conexión
+        # SQLite (mode=ro) se abra y se use en el mismo hilo. Así no hace falta
+        # check_same_thread=False en producción: solo se ejercita el unquote.
+        ready = threading.Event()
+        holder = {}
+
+        def _serve():
+            srv = KanbanServer(('127.0.0.1', 0), KanbanHandler, cls.db_path)
+            holder['srv'] = srv
+            holder['port'] = srv.server_address[1]
+            ready.set()
+            try:
+                srv.serve_forever()
+            finally:
+                # cerrar en el MISMO hilo en que se abrieron (mode=ro)
+                srv.server_close()
+                srv.conn.close()
+
+        cls._srv_thread = threading.Thread(target=_serve, daemon=True)
+        cls._srv_thread.start()
+        if not ready.wait(10):
+            raise RuntimeError('el servidor de test no arrancó')
+        cls.srv = holder['srv']
+        cls.port = holder['port']
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()              # detiene serve_forever (hilo servidor)
+        cls._srv_thread.join(10)        # espera a que cierre conn/socket allí
+        cls.wconn.close()
+        os.unlink(cls.db_path)
+
+    def _get(self, path):
+        """HTTP GET al servidor de test; retorna (status_code, json_body)."""
+        url = f'http://127.0.0.1:{self.port}{path}'
+        try:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
+
+    # --- /api/group/{key} ---
+
+    def test_encoded_group_key_returns_200(self):
+        """GET /api/group/<clave_codificada> → 200 con el grupo correcto."""
+        # clave: '<b>XSS</b>&test'  →  '%3Cb%3EXSS%3C%2Fb%3E%26test'
+        encoded = urllib.parse.quote('<b>XSS</b>&test', safe='')
+        status, data = self._get(f'/api/group/{encoded}')
+        self.assertEqual(status, 200)
+        self.assertEqual(data['key'], '<b>XSS</b>&test')
+
+    def test_nonexistent_encoded_key_returns_404_json(self):
+        """GET /api/group/<clave_inexistente_codificada> → 404 JSON con 'error'."""
+        encoded = urllib.parse.quote('<no-existe>&missing', safe='')
+        status, data = self._get(f'/api/group/{encoded}')
+        self.assertEqual(status, 404)
+        self.assertIn('error', data)
+
+    def test_normal_group_key_unaffected(self):
+        """Claves normales sin encoding especial siguen funcionando."""
+        status, data = self._get('/api/group/MTD-360')
+        self.assertEqual(status, 200)
+        self.assertEqual(data['key'], 'MTD-360')
+
+    # --- /api/tasks/{id} ---
+
+    def test_encoded_task_id_returns_task(self):
+        """GET /api/tasks/<id_codificado> → 200 con la task correcta."""
+        # id: 't_sp ec ial'  →  't_sp%20ec%20ial'
+        encoded = urllib.parse.quote('t_sp ec ial', safe='')
+        status, data = self._get(f'/api/tasks/{encoded}')
+        self.assertEqual(status, 200)
+        self.assertEqual(data['id'], 't_sp ec ial')
 
 
 if __name__ == '__main__':

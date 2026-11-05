@@ -6,88 +6,78 @@
 <title>Fábrica Hermes — Visor de flujo</title>
 <style>
 /* =========================================================
-   VARIABLES CSS — PROVISIONALES
-   QA debe alinear con hermes dashboard real (hermes dashboard → kanban).
-   Fuentes usadas:
-     --color-bg, --color-surface: globals.css (html/body) → #0a1018 / #161618
-     --color-text: globals.css (html/body color) → #e6edf3
-     --color-accent: --theme-primary → #0053fd
-     --radius: --radius en main-CEhf4DIc.css → 0.75rem
-   Los --color-status-* son del design.md (aprobado por QA en su iteración).
+   VARIABLES CSS — alineadas con el dashboard de Hermes.
+   Fondo, texto, radio y tipografias tomados de las variables
+   reales de su :root (tema oscuro teal/crema). Las superficies
+   y bordes se derivan de esos dos colores base (familia
+   teal/crema), sin azul GitHub; los estados semanticos se
+   conservan legibles sobre el nuevo fondo. Ningun color
+   literal fuera de :root: todo consume var(--...).
    ========================================================= */
 :root {
-  /* Fondo y superficies */
-  --color-bg:          #0a1018;
-  --color-surface:     #161618;
-  --color-surface-2:   #1e2432;
-  --color-border:      #1f2937;
-  --color-border-2:    #2d3748;
+  /* --- Base (tomados del dashboard de Hermes) --- */
+  --color-bg:            #041c1c;   /* --background */
+  --color-text:          #ffe6cb;   /* --midground */
+  --radius:              0.5rem;    /* --radius (.5rem) */
+  --radius-sm:           0.375rem;
 
-  /* Texto */
-  --color-text:        #e6edf3;
-  --color-text-muted:  #8b949e;
-  --color-text-dim:    #586069;
+  /* --- Superficies derivadas: teal un poco mas claro que el fondo --- */
+  --color-surface:       #0a2828;
+  --color-surface-2:     #103634;
+  --color-sidebar-bg:    #061f1f;
+  --color-sidebar-hover: #0e2f2d;
+  --color-sidebar-active:#14453f;
+  --color-header-bg:     #061f1f;
+  --color-panel-bg:      #061f1f;
 
-  /* Acento (--theme-primary del dashboard real) */
-  --color-accent:      #0053fd;
+  /* --- Bordes: crema a baja opacidad sobre el teal --- */
+  --color-border:        rgba(255, 230, 203, 0.14);
+  --color-border-2:      rgba(255, 230, 203, 0.22);
 
-  /* Radio de borde (--radius del dashboard real) */
-  --radius:            0.75rem;
-  --radius-sm:         0.375rem;
+  /* --- Texto derivado del crema --- */
+  --color-text-muted:    #cdb9a0;
+  --color-text-dim:      #a89882;
 
-  /* Estados de cards (tabla del design.md) */
-  --color-status-todo:        #4b5563;
-  --color-status-ready:       #1d4ed8;
-  --color-status-running:     #065f46;
-  --color-status-review:      #92400e;
-  --color-status-blocked:     #7f1d1d;
-  --color-status-scheduled:   #4c1d95;
-  --color-status-done:        #14532d;
-  --color-status-archived:    #1f2937;
-  --color-text-on-status:     #f9fafb;
+  /* --- Acento: verde de salida de Hermes (sin azul GitHub) --- */
+  --color-accent:        #34d399;
 
-  /* needs_input */
-  --color-needs-input:        #ef4444;
+  /* --- Estado de cards (semanticos, legibles sobre el fondo teal) --- */
+  --color-status-todo:      #37474f;
+  --color-status-ready:     #1e5a8a;
+  --color-status-running:   #0e6b4f;
+  --color-status-review:    #8a5a12;
+  --color-status-blocked:   #8a1f1f;
+  --color-status-scheduled: #4a2b7a;
+  --color-status-done:      #3d4a45;   /* done apagado */
+  --color-status-archived:  #2a3532;
+  --color-text-on-status:   #f9fafb;
 
-  /* Chip de modelo (naranja oscuro) */
-  --color-chip-model-bg:      #7c2d12;
-  --color-chip-model-text:    #fed7aa;
+  /* --- needs_input (rojo claro, legible sobre el rojo de blocked) --- */
+  --color-needs-input:   #fca5a5;
 
-  /* Chip de flow step (azul oscuro) */
-  --color-chip-flow-bg:       #1e3a5f;
-  --color-chip-flow-text:     #93c5fd;
+  /* --- Chips --- */
+  --color-chip-model-bg:   #6b3410;
+  --color-chip-model-text: #ffd9b0;
+  --color-chip-flow-bg:    #0f4c46;
+  --color-chip-flow-text:  #9ff0e0;
+  --color-chip-status-bg:  rgba(0, 0, 0, 0.3);
 
-  /* Sidebar */
-  --color-sidebar-bg:         #0d1117;
-  --color-sidebar-hover:      #1a2332;
-  --color-sidebar-active:     #1d3a5f;
+  /* --- Indicador de estado API --- */
+  --color-ok:    #34d399;
+  --color-error: #f87171;
 
-  /* Header */
-  --color-header-bg:          #0d1117;
+  /* --- Flechas SVG y hover de card --- */
+  --color-arrow:             #5a7d78;
+  --color-card-hover-border: rgba(255, 230, 203, 0.35);
 
-  /* Panel de detalles */
-  --color-panel-bg:           #0d1117;
+  /* --- Outcomes de runs --- */
+  --color-run-running: #34d399;
+  --color-run-warning: #fbbf24;
 
-  /* Indicador de estado API */
-  --color-ok:                 #22c55e;
-  --color-error:              #ef4444;
-
-  /* Flechas SVG */
-  --color-arrow:              #4b5563;
-
-  /* Hover de card */
-  --color-card-hover-border:  rgba(255,255,255,0.2);
-
-  /* Chip de estado (fondo semitransparente sobre el color del estado) */
-  --color-chip-status-bg:     rgba(0,0,0,0.3);
-
-  /* Outcomes de runs */
-  --color-run-running:        #34d399;
-  --color-run-warning:        #f59e0b;
-
-  /* Tipografía monoespaciada */
-  --font-mono: "JetBrains Mono", "Cascadia Code", "Cascadia Mono",
-               "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  /* --- Tipografia (sans para el cuerpo; mono solo para ids) --- */
+  --theme-font-sans: system-ui, -apple-system, "Segoe UI", Roboto,
+                     "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Courier Prime", monospace;
 }
 
 /* =========================================================
@@ -103,7 +93,7 @@ html, body {
   height: 100%;
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--theme-font-sans);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -152,7 +142,6 @@ button {
 #timestamp {
   font-size: 0.75rem;
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
 }
 
 #status-dot {
@@ -276,7 +265,6 @@ button {
 
 .badge {
   font-size: 0.65rem;
-  font-family: var(--font-mono);
   padding: 0.1rem 0.35rem;
   border-radius: 10px;
   font-weight: 600;
@@ -429,7 +417,6 @@ button {
 .chip-model {
   background: var(--color-chip-model-bg);
   color: var(--color-chip-model-text);
-  font-family: var(--font-mono);
   font-size: 0.55rem;
 }
 
@@ -537,7 +524,6 @@ button {
 }
 
 .stat-value {
-  font-family: var(--font-mono);
   font-weight: 700;
   color: var(--color-text);
 }
@@ -572,7 +558,6 @@ button {
 .run-outcome {
   font-size: 0.7rem;
   font-weight: 700;
-  font-family: var(--font-mono);
 }
 
 .run-outcome.done        { color: var(--color-ok); }
