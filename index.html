@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fábrica Hermes — Visor de flujo</title>
+<style>
+/* =========================================================
+   VARIABLES CSS — alineadas con el dashboard de Hermes.
+   Fondo, texto, radio y tipografias tomados de las variables
+   reales de su :root (tema oscuro teal/crema). Las superficies
+   y bordes se derivan de esos dos colores base (familia
+   teal/crema), sin azul GitHub; los estados semanticos se
+   conservan legibles sobre el nuevo fondo. Ningun color
+   literal fuera de :root: todo consume var(--...).
+   ========================================================= */
+:root {
+  /* --- Base (tomados del dashboard de Hermes) --- */
+  --color-bg:            #041c1c;   /* --background */
+  --color-text:          #ffe6cb;   /* --midground */
+  --radius:              0.5rem;    /* --radius (.5rem) */
+  --radius-sm:           0.375rem;
+
+  /* --- Superficies derivadas: teal un poco mas claro que el fondo --- */
+  --color-surface:       #0a2828;
+  --color-surface-2:     #103634;
+  --color-sidebar-bg:    #061f1f;
+  --color-sidebar-hover: #0e2f2d;
+  --color-sidebar-active:#14453f;
+  --color-header-bg:     #061f1f;
+  --color-panel-bg:      #061f1f;
+
+  /* --- Bordes: crema a baja opacidad sobre el teal --- */
+  --color-border:        rgba(255, 230, 203, 0.14);
+  --color-border-2:      rgba(255, 230, 203, 0.22);
+
+  /* --- Texto derivado del crema --- */
+  --color-text-muted:    #cdb9a0;
+  --color-text-dim:      #a89882;
+
+  /* --- Acento: verde de salida de Hermes (sin azul GitHub) --- */
+  --color-accent:        #34d399;
+
+  /* --- Estado de cards (semanticos, legibles sobre el fondo teal) --- */
+  --color-status-todo:      #37474f;
+  --color-status-ready:     #1e5a8a;
+  --color-status-running:   #0e6b4f;
+  --color-status-review:    #8a5a12;
+  --color-status-blocked:   #8a1f1f;
+  --color-status-scheduled: #4a2b7a;
+  --color-status-done:      #3d4a45;   /* done apagado */
+  --color-status-archived:  #2a3532;
+  --color-text-on-status:   #f9fafb;
+
+  /* --- needs_input (rojo claro, legible sobre el rojo de blocked) --- */
+  --color-needs-input:   #fca5a5;
+
+  /* --- Chips --- */
+  --color-chip-model-bg:   #6b3410;
+  --color-chip-model-text: #ffd9b0;
+  --color-chip-flow-bg:    #0f4c46;
+  --color-chip-flow-text:  #9ff0e0;
+  --color-chip-status-bg:  rgba(0, 0, 0, 0.3);
+
+  /* --- Indicador de estado API --- */
+  --color-ok:    #34d399;
+  --color-error: #f87171;
+
+  /* --- Flechas SVG y hover de card --- */
+  --color-arrow:             #5a7d78;
+  --color-card-hover-border: rgba(255, 230, 203, 0.35);
+
+  /* --- Outcomes de runs --- */
+  --color-run-running: #34d399;
+  --color-run-warning: #fbbf24;
+
+  /* --- Tipografia (sans para el cuerpo; mono solo para ids) --- */
+  --theme-font-sans: system-ui, -apple-system, "Segoe UI", Roboto,
+                     "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Courier Prime", monospace;
+}
+
+/* =========================================================
+   RESET Y BASE
+   ========================================================= */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--theme-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+}
+
+/* =========================================================
+   LAYOUT PRINCIPAL
+   ========================================================= */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+#header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1.25rem;
+  height: 48px;
+  background: var(--color-header-bg);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+#header h1 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  flex: 1;
+}
+
+#timestamp {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+#status-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+#status-dot::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-ok);
+}
+
+#status-dot.error::before {
+  background: var(--color-error);
+}
+
+#status-dot.error .status-label {
+  color: var(--color-error);
+}
+
+.status-label {
+  color: var(--color-ok);
+}
+
+/* =========================================================
+   BODY (SIDEBAR + MAIN + PANEL)
+   ========================================================= */
+#body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* =========================================================
+   SIDEBAR DE GRUPOS
+   ========================================================= */
+#sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--color-sidebar-bg);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+#toggle-archived {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+#toggle-archived input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+#groups-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.group-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 0.1s;
+  gap: 0.5rem;
+}
+
+.group-item:hover {
+  background: var(--color-sidebar-hover);
+}
+
+.group-item.active {
+  background: var(--color-sidebar-active);
+}
+
+.group-key {
+  font-size: 0.8rem;
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-badges {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.badge {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 10px;
+  font-weight: 600;
+  min-width: 20px;
+  text-align: center;
+}
+
+.badge-total {
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+}
+
+.badge-running {
+  background: var(--color-status-running);
+  color: var(--color-text-on-status);
+}
+
+.badge-blocked {
+  background: var(--color-status-blocked);
+  color: var(--color-text-on-status);
+}
+
+/* =========================================================
+   ÁREA PRINCIPAL (GRAFO)
+   ========================================================= */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#graph-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+#graph-title {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+#graph-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  padding: 1.5rem;
+}
+
+#graph-container {
+  display: flex;
+  flex-direction: row;
+  gap: 3rem;
+  align-items: flex-start;
+  min-height: 100%;
+  position: relative;
+}
+
+#arrows-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.dag-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 200px;
+}
+
+/* =========================================================
+   CARDS DEL GRAFO
+   ========================================================= */
+.task-card {
+  background: var(--color-status-todo);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.75rem;
+  cursor: pointer;
+  min-width: 200px;
+  max-width: 240px;
+  border: 2px solid transparent;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+
+.task-card:hover {
+  border-color: var(--color-card-hover-border);
+}
+
+.task-card.selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.task-card.needs-input {
+  border-color: var(--color-needs-input) !important;
+  box-shadow: 0 0 0 1px var(--color-needs-input);
+}
+
+/* Estados por clase */
+.task-card.status-todo      { background: var(--color-status-todo); }
+.task-card.status-ready     { background: var(--color-status-ready); }
+.task-card.status-running   { background: var(--color-status-running); }
+.task-card.status-review    { background: var(--color-status-review); }
+.task-card.status-blocked   { background: var(--color-status-blocked); }
+.task-card.status-scheduled { background: var(--color-status-scheduled); }
+.task-card.status-done      { background: var(--color-status-done); }
+.task-card.status-archived  { background: var(--color-status-archived); }
+
+.card-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-on-status);
+  margin-bottom: 0.4rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.4rem;
+}
+
+.chip {
+  font-size: 0.6rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.chip-flow {
+  background: var(--color-chip-flow-bg);
+  color: var(--color-chip-flow-text);
+}
+
+.chip-model {
+  background: var(--color-chip-model-bg);
+  color: var(--color-chip-model-text);
+  font-size: 0.55rem;
+}
+
+.chip-status {
+  background: var(--color-chip-status-bg);
+  color: var(--color-text-on-status);
+  text-transform: uppercase;
+  font-size: 0.55rem;
+  letter-spacing: 0.06em;
+}
+
+.needs-input-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.65rem;
+  color: var(--color-needs-input);
+  font-weight: 600;
+  margin-top: 0.3rem;
+}
+
+#empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-dim);
+  font-size: 0.85rem;
+}
+
+/* =========================================================
+   PANEL LATERAL DE DETALLES
+   ========================================================= */
+#detail-panel {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--color-panel-bg);
+  border-left: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s;
+}
+
+#detail-panel.hidden {
+  width: 0;
+  border-left: none;
+  overflow: hidden;
+}
+
+#detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+#detail-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+#detail-close {
+  font-size: 1rem;
+  color: var(--color-text-dim);
+  padding: 0.1rem 0.3rem;
+  border-radius: var(--radius-sm);
+}
+
+#detail-close:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+#detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.detail-task-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.75rem;
+}
+
+.stat-label {
+  color: var(--color-text-muted);
+}
+
+.stat-value {
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.stat-value.failure {
+  color: var(--color-needs-input);
+}
+
+.runs-section {
+  margin-top: 1rem;
+}
+
+.runs-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-dim);
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.run-item {
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  margin-bottom: 0.4rem;
+  gap: 0.2rem;
+}
+
+.run-outcome {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.run-outcome.done        { color: var(--color-ok); }
+.run-outcome.running     { color: var(--color-run-running); }
+.run-outcome.crashed     { color: var(--color-error); }
+.run-outcome.rate_limited { color: var(--color-run-warning); }
+.run-outcome.reclaimed   { color: var(--color-run-warning); }
+.run-outcome.gave_up     { color: var(--color-error); }
+.run-outcome.cancelled   { color: var(--color-text-muted); }
+
+.run-meta {
+  font-size: 0.65rem;
+  color: var(--color-text-dim);
+}
+
+#detail-loading {
+  color: var(--color-text-dim);
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 2rem;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- HEADER -->
+  <div id="header">
+    <h1>Fábrica Hermes — Visor de flujo</h1>
+    <span id="timestamp">--:--:--</span>
+    <span id="status-dot">
+      <span class="status-label">OK</span>
+    </span>
+  </div>
+
+  <!-- CUERPO: SIDEBAR + MAIN + PANEL -->
+  <div id="body">
+    <!-- SIDEBAR DE GRUPOS -->
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <span>Grupos</span>
+        <label id="toggle-archived">
+          <input type="checkbox" id="show-archived">
+          Archivadas
+        </label>
+      </div>
+      <div id="groups-list">
+        <!-- se llena por JS -->
+      </div>
+    </div>
+
+    <!-- ÁREA DEL GRAFO -->
+    <div id="main">
+      <div id="graph-toolbar">
+        <span id="graph-title">Selecciona un grupo para ver el grafo</span>
+      </div>
+      <div id="graph-wrapper">
+        <div id="graph-container">
+          <svg id="arrows-svg" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrowhead" markerWidth="8" markerHeight="6"
+                      refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 8 3, 0 6" style="fill:var(--color-arrow)"/>
+              </marker>
+            </defs>
+          </svg>
+          <div id="empty-state">↑ Selecciona un grupo en la barra lateral</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL DE DETALLES -->
+    <div id="detail-panel" class="hidden">
+      <div id="detail-header">
+        <span id="detail-title">Detalles</span>
+        <button id="detail-close" title="Cerrar panel">✕</button>
+      </div>
+      <div id="detail-body">
+        <div id="detail-loading">Haz clic en una card para ver detalles</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* =========================================================
+   CONSTANTES
+   ========================================================= */
+const REFRESH_INTERVAL_MS = 10_000;
+const FETCH_TIMEOUT_MS    = 20_000;
+
+const FLOW_STEP = {
+  explorer: 'F0 Explorar',
+  coder:    'Implementar',
+  reviewer: 'Review',
+  qa:       'QA',
+  closer:   'Cierre',
+};
+
+const FAILURE_OUTCOMES = new Set(['crashed', 'rate_limited', 'reclaimed', 'gave_up']);
+
+/* =========================================================
+   ESTADO
+   ========================================================= */
+let activeGroupKey = null;
+let activeTaskId   = null;
+let groupData      = null;  // { key, tasks, links }
+let showArchived   = false;
+
+/* =========================================================
+   HELPERS DE FETCH (con timeout)
+   ========================================================= */
+async function fetchJson(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      return { ok: false, status: res.status, data: null };
+    }
+    const data = await res.json();
+    return { ok: true, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 0, data: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* =========================================================
+   INDICADOR DE ESTADO
+   ========================================================= */
+function setStatus(ok) {
+  const dot = document.getElementById('status-dot');
+  const label = dot.querySelector('.status-label');
+  if (ok) {
+    dot.classList.remove('error');
+    // textContent para el label (no es dato API, es estático)
+    label.textContent = 'OK';
+  } else {
+    dot.classList.add('error');
+    label.textContent = 'Error';
+  }
+}
+
+function updateTimestamp() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  document.getElementById('timestamp').textContent = `${hh}:${mm}:${ss}`;
+}
+
+/* =========================================================
+   RENDER SIDEBAR DE GRUPOS
+   ========================================================= */
+function renderGroups(groups) {
+  const list = document.getElementById('groups-list');
+  // Preservar el scroll
+  const scrollTop = list.scrollTop;
+
+  // Limpiar sin innerHTML con datos API
+  while (list.firstChild) list.removeChild(list.firstChild);
+
+  for (const g of groups) {
+    const item = document.createElement('div');
+    item.className = 'group-item' + (g.key === activeGroupKey ? ' active' : '');
+    item.dataset.key = g.key;
+
+    const keySpan = document.createElement('span');
+    keySpan.className = 'group-key';
+    keySpan.textContent = g.key;        // ← textContent: dato API
+
+    const badges = document.createElement('div');
+    badges.className = 'group-badges';
+
+    const totalBadge = document.createElement('span');
+    totalBadge.className = 'badge badge-total';
+    totalBadge.textContent = String(g.task_count);  // dato API
+
+    badges.appendChild(totalBadge);
+
+    if (g.running_count > 0) {
+      const runBadge = document.createElement('span');
+      runBadge.className = 'badge badge-running';
+      runBadge.textContent = String(g.running_count);  // dato API
+      badges.appendChild(runBadge);
+    }
+
+    if (g.blocked_input_count > 0) {
+      const blkBadge = document.createElement('span');
+      blkBadge.className = 'badge badge-blocked';
+      blkBadge.textContent = String(g.blocked_input_count);  // dato API
+      badges.appendChild(blkBadge);
+    }
+
+    item.appendChild(keySpan);
+    item.appendChild(badges);
+
+    item.addEventListener('click', () => selectGroup(g.key));
+    list.appendChild(item);
+  }
+
+  list.scrollTop = scrollTop;
+}
+
+/* =========================================================
+   SELECCIONAR GRUPO
+   ========================================================= */
+async function selectGroup(key) {
+  activeGroupKey = key;
+  activeTaskId   = null;
+
+  // Marcar activo en sidebar
+  document.querySelectorAll('.group-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.key === key);
+  });
+
+  // Título del toolbar
+  document.getElementById('graph-title').textContent = key;  // dato API
+
+  await loadGroup(key);
+}
+
+/* =========================================================
+   CARGAR GRAFO DE UN GRUPO
+   ========================================================= */
+async function loadGroup(key) {
+  const result = await fetchJson(`/api/group/${encodeURIComponent(key)}`);
+  if (!result.ok) {
+    setStatus(false);
+    return;
+  }
+  setStatus(true);
+  groupData = result.data;
+  renderGraph(groupData);
+}
+
+/* =========================================================
+   RENDER DAG
+   ========================================================= */
+function renderGraph(data) {
+  const container = document.getElementById('graph-container');
+  const svg       = document.getElementById('arrows-svg');
+  const wrapper   = document.getElementById('graph-wrapper');
+
+  // Limpiar columnas anteriores (conservando el SVG)
+  const toRemove = [];
+  for (const child of container.children) {
+    if (child !== svg && child.id !== 'empty-state') toRemove.push(child);
+  }
+  toRemove.forEach(el => container.removeChild(el));
+
+  // Filtrar archivadas si el toggle está apagado
+  const tasks = data.tasks.filter(t => showArchived || t.status !== 'archived');
+
+  if (tasks.length === 0) {
+    document.getElementById('empty-state').style.display = 'flex';
+    clearArrows(svg);
+    return;
+  }
+
+  document.getElementById('empty-state').style.display = 'none';
+
+  const taskIds = new Set(tasks.map(t => t.id));
+  const links   = data.links.filter(
+    l => taskIds.has(l.parent_id) && taskIds.has(l.child_id)
+  );
+
+  // --- Topological levels (BFS) ---
+  const inDegree  = new Map();
+  const childrenOf = new Map();
+  for (const t of tasks) { inDegree.set(t.id, 0); childrenOf.set(t.id, []); }
+  for (const l of links) {
+    inDegree.set(l.child_id, (inDegree.get(l.child_id) || 0) + 1);
+    if (childrenOf.has(l.parent_id)) {
+      childrenOf.get(l.parent_id).push(l.child_id);
+    }
+  }
+
+  const level  = new Map();
+  const queue  = [];
+  for (const t of tasks) {
+    if (inDegree.get(t.id) === 0) {
+      level.set(t.id, 0);
+      queue.push(t.id);
+    }
+  }
+
+  let qi = 0;
+  while (qi < queue.length) {
+    const id = queue[qi++];
+    const lv = level.get(id);
+    for (const childId of (childrenOf.get(id) || [])) {
+      const newLv = Math.max(level.get(childId) || 0, lv + 1);
+      level.set(childId, newLv);
+      inDegree.set(childId, inDegree.get(childId) - 1);
+      if (inDegree.get(childId) === 0) queue.push(childId);
+    }
+  }
+
+  // Tasks que quedaron fuera del BFS (ciclos): nivel 0
+  for (const t of tasks) {
+    if (!level.has(t.id)) level.set(t.id, 0);
+  }
+
+  // Agrupar por nivel
+  const maxLevel = Math.max(...level.values());
+  const byLevel  = [];
+  for (let i = 0; i <= maxLevel; i++) byLevel.push([]);
+  for (const t of tasks) byLevel[level.get(t.id)].push(t);
+
+  // --- Renderizar columnas ---
+  const taskElements = {};  // id → DOM element
+
+  for (let col = 0; col <= maxLevel; col++) {
+    const column = document.createElement('div');
+    column.className = 'dag-column';
+
+    for (const task of byLevel[col]) {
+      const card = buildTaskCard(task);
+      card.addEventListener('click', () => selectTask(task.id, card));
+      if (task.id === activeTaskId) {
+        card.classList.add('selected');
+      }
+      taskElements[task.id] = card;
+      column.appendChild(card);
+    }
+
+    container.appendChild(column);
+  }
+
+  // --- Flechas SVG (después de que el DOM esté en página) ---
+  requestAnimationFrame(() => drawArrows(wrapper, svg, links, taskElements));
+}
+
+/* =========================================================
+   CONSTRUIR CARD
+   ========================================================= */
+function buildTaskCard(task) {
+  const card = document.createElement('div');
+  card.className = `task-card status-${task.status || 'todo'}`;
+  card.dataset.taskId = task.id;
+
+  // needs_input
+  const isNeedsInput = task.status === 'blocked' && task.block_kind === 'needs_input';
+  if (isNeedsInput) card.classList.add('needs-input');
+
+  // Título (max 60 chars)
+  const rawTitle = (task.title || '(sin título)');
+  const shortTitle = rawTitle.length > 60 ? rawTitle.slice(0, 60) + '…' : rawTitle;
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'card-title';
+  titleEl.textContent = shortTitle;  // ← textContent
+  card.appendChild(titleEl);
+
+  // Chips
+  const chips = document.createElement('div');
+  chips.className = 'card-chips';
+
+  // Chip de flow step (basado en assignee)
+  const stepLabel = FLOW_STEP[task.assignee] || (task.assignee || 'desconocido');
+  const flowChip = document.createElement('span');
+  flowChip.className = 'chip chip-flow';
+  flowChip.textContent = stepLabel;  // ← textContent
+  chips.appendChild(flowChip);
+
+  // Chip de estado
+  const statusChip = document.createElement('span');
+  statusChip.className = 'chip chip-status';
+  statusChip.textContent = task.status || '';  // ← textContent
+  chips.appendChild(statusChip);
+
+  // Chip de modelo (si hay model_override)
+  if (task.model_override) {
+    const modelChip = document.createElement('span');
+    modelChip.className = 'chip chip-model';
+    modelChip.textContent = task.model_override;  // ← textContent
+    chips.appendChild(modelChip);
+  }
+
+  card.appendChild(chips);
+
+  // Indicador needs_input
+  if (isNeedsInput) {
+    const label = document.createElement('div');
+    label.className = 'needs-input-label';
+
+    const icon = document.createElement('span');
+    icon.textContent = '⚠';
+
+    const text = document.createElement('span');
+    text.textContent = 'Espera decisión';
+
+    label.appendChild(icon);
+    label.appendChild(text);
+    card.appendChild(label);
+  }
+
+  return card;
+}
+
+/* =========================================================
+   FLECHAS SVG
+   Las coordenadas son relativas al contenedor #graph-wrapper
+   (position:relative). Se recalculan al hacer scroll/resize/refresh.
+   ========================================================= */
+function drawArrows(wrapper, svg, links, taskElements) {
+  clearArrows(svg);
+
+  // Ajustar el SVG al tamaño del contenido scrollable
+  const sc = document.getElementById('graph-container');
+  svg.setAttribute('width',  sc.scrollWidth);
+  svg.setAttribute('height', sc.scrollHeight);
+
+  const wrapperRect = wrapper.getBoundingClientRect();
+  const scrollLeft  = wrapper.scrollLeft;
+  const scrollTop   = wrapper.scrollTop;
+
+  for (const link of links) {
+    const parentEl = taskElements[link.parent_id];
+    const childEl  = taskElements[link.child_id];
+    if (!parentEl || !childEl) continue;
+
+    const pRect = parentEl.getBoundingClientRect();
+    const cRect = childEl.getBoundingClientRect();
+
+    // Coordenadas relativas al contenedor + scroll
+    const srcX = pRect.right  - wrapperRect.left + scrollLeft;
+    const srcY = pRect.top + pRect.height / 2 - wrapperRect.top + scrollTop;
+    const dstX = cRect.left   - wrapperRect.left + scrollLeft;
+    const dstY = cRect.top + cRect.height / 2 - wrapperRect.top + scrollTop;
+
+    const midX = (srcX + dstX) / 2;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d',
+      `M ${srcX} ${srcY} C ${midX} ${srcY} ${midX} ${dstY} ${dstX} ${dstY}`
+    );
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'var(--color-arrow)');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('marker-end', 'url(#arrowhead)');
+    svg.appendChild(path);
+  }
+}
+
+function clearArrows(svg) {
+  // Conservar el elemento <defs> con el marcador
+  const defs = svg.querySelector('defs');
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (defs) svg.appendChild(defs);
+}
+
+function redrawArrows() {
+  if (!groupData) return;
+  const wrapper = document.getElementById('graph-wrapper');
+  const svg     = document.getElementById('arrows-svg');
+  const taskIds = new Set(
+    groupData.tasks
+      .filter(t => showArchived || t.status !== 'archived')
+      .map(t => t.id)
+  );
+  const links   = groupData.links.filter(
+    l => taskIds.has(l.parent_id) && taskIds.has(l.child_id)
+  );
+  const taskElements = {};
+  document.querySelectorAll('.task-card').forEach(el => {
+    taskElements[el.dataset.taskId] = el;
+  });
+  drawArrows(wrapper, svg, links, taskElements);
+}
+
+/* =========================================================
+   SELECCIONAR TASK (ABRIR PANEL)
+   ========================================================= */
+function selectTask(taskId, cardEl) {
+  // Deseleccionar todas
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('selected'));
+  cardEl.classList.add('selected');
+  activeTaskId = taskId;
+
+  // Mostrar panel
+  const panel = document.getElementById('detail-panel');
+  panel.classList.remove('hidden');
+
+  loadTaskDetail(taskId);
+}
+
+/* =========================================================
+   CARGAR DETALLE DE TASK
+   ========================================================= */
+async function loadTaskDetail(taskId) {
+  const body = document.getElementById('detail-body');
+
+  // Limpiar body
+  while (body.firstChild) body.removeChild(body.firstChild);
+
+  const loadingEl = document.createElement('div');
+  loadingEl.id = 'detail-loading';
+  loadingEl.textContent = 'Cargando…';
+  body.appendChild(loadingEl);
+
+  const result = await fetchJson(`/api/tasks/${encodeURIComponent(taskId)}`);
+  if (!result.ok || !result.data) {
+    while (body.firstChild) body.removeChild(body.firstChild);
+    const errEl = document.createElement('div');
+    errEl.className = 'detail-task-title';
+    errEl.textContent = 'Error al cargar los detalles';
+    body.appendChild(errEl);
+    return;
+  }
+
+  const task = result.data;
+
+  while (body.firstChild) body.removeChild(body.firstChild);
+
+  // Título
+  const titleEl = document.createElement('div');
+  titleEl.className = 'detail-task-title';
+  titleEl.textContent = task.title || '(sin título)';  // ← textContent
+  body.appendChild(titleEl);
+
+  // ID (monoespaciado)
+  const idEl = document.createElement('div');
+  idEl.style.fontFamily = 'var(--font-mono)';
+  idEl.style.fontSize   = '0.65rem';
+  idEl.style.color      = 'var(--color-text-dim)';
+  idEl.style.marginBottom = '0.75rem';
+  idEl.textContent = task.id;  // ← textContent
+  body.appendChild(idEl);
+
+  // Estadísticas
+  const failureCount = (task.runs || []).filter(r => FAILURE_OUTCOMES.has(r.outcome)).length;
+  const durationMin  = Math.round((task.total_duration_seconds || 0) / 60);
+
+  const stats = [
+    ['Runs totales',         String(task.run_count || 0),                false],
+    ['Cambios solicitados',  String(task.changes_requested_count || 0),  false],
+    ['Fallos',               String(failureCount),                       failureCount > 0],
+    ['Duración total',       `${durationMin} min`,                       false],
+  ];
+
+  for (const [label, value, isFailure] of stats) {
+    const row = document.createElement('div');
+    row.className = 'stat-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'stat-label';
+    lbl.textContent = label;  // estático
+
+    const val = document.createElement('span');
+    val.className = 'stat-value' + (isFailure ? ' failure' : '');
+    val.textContent = value;  // calculado de API pero es número
+
+    row.appendChild(lbl);
+    row.appendChild(val);
+    body.appendChild(row);
+  }
+
+  // Lista de runs
+  const runs = task.runs || [];
+  if (runs.length > 0) {
+    const section = document.createElement('div');
+    section.className = 'runs-section';
+
+    const runsTitle = document.createElement('div');
+    runsTitle.className = 'runs-title';
+    runsTitle.textContent = 'Runs individuales';
+    section.appendChild(runsTitle);
+
+    for (const run of runs) {
+      const item = document.createElement('div');
+      item.className = 'run-item';
+
+      const outcome = run.outcome || 'running';
+      const outEl = document.createElement('div');
+      outEl.className = `run-outcome ${outcome.replace('_', '-')}`;
+      outEl.textContent = outcome;  // ← textContent
+
+      const metaEl = document.createElement('div');
+      metaEl.className = 'run-meta';
+
+      // Perfil
+      const profileText = document.createElement('span');
+      profileText.textContent = run.profile || 'desconocido';  // ← textContent
+
+      // Duración
+      let durText = '';
+      if (run.started_at && run.ended_at) {
+        const dur = Math.round(run.ended_at - run.started_at);
+        durText = ` · ${dur}s`;
+      }
+      const durSpan = document.createElement('span');
+      durSpan.textContent = durText;
+
+      metaEl.appendChild(profileText);
+      metaEl.appendChild(durSpan);
+
+      item.appendChild(outEl);
+      item.appendChild(metaEl);
+      section.appendChild(item);
+    }
+
+    body.appendChild(section);
+  }
+}
+
+/* =========================================================
+   AUTO-REFRESCO CADA 10 s
+   ========================================================= */
+async function refresh() {
+  // Siempre actualizar la lista de grupos
+  const groupsResult = await fetchJson('/api/groups');
+  if (!groupsResult.ok) {
+    setStatus(false);
+    return;
+  }
+  setStatus(true);
+  updateTimestamp();
+  renderGroups(groupsResult.data);
+
+  // Si hay grupo activo, actualizar el grafo
+  if (activeGroupKey) {
+    const groupResult = await fetchJson(`/api/group/${encodeURIComponent(activeGroupKey)}`);
+    if (groupResult.ok) {
+      groupData = groupResult.data;
+      renderGraph(groupData);
+      // Si hay task seleccionada, recargar su detalle
+      if (activeTaskId) {
+        // Restaurar selección visual
+        const selectedCard = document.querySelector(`[data-task-id="${CSS.escape(activeTaskId)}"]`);
+        if (selectedCard) selectedCard.classList.add('selected');
+      }
+    }
+  }
+}
+
+/* =========================================================
+   INICIALIZACIÓN
+   ========================================================= */
+async function init() {
+  // Primera carga
+  const groupsResult = await fetchJson('/api/groups');
+  if (!groupsResult.ok) {
+    setStatus(false);
+    updateTimestamp();
+    return;
+  }
+  setStatus(true);
+  updateTimestamp();
+  renderGroups(groupsResult.data);
+
+  // Iniciar refresco automático cada 10 s
+  setInterval(refresh, REFRESH_INTERVAL_MS);
+}
+
+/* =========================================================
+   EVENTOS
+   ========================================================= */
+// Cerrar panel de detalles
+document.getElementById('detail-close').addEventListener('click', () => {
+  document.getElementById('detail-panel').classList.add('hidden');
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('selected'));
+  activeTaskId = null;
+});
+
+// Toggle de archivadas
+document.getElementById('show-archived').addEventListener('change', e => {
+  showArchived = e.target.checked;
+  if (groupData) renderGraph(groupData);
+});
+
+// Recalcular flechas al hacer scroll en el wrapper
+document.getElementById('graph-wrapper').addEventListener('scroll', () => {
+  redrawArrows();
+}, { passive: true });
+
+// Recalcular flechas al redimensionar la ventana
+window.addEventListener('resize', () => {
+  redrawArrows();
+}, { passive: true });
+
+// Arrancar
+init();
+</script>
+</body>
+</html>
