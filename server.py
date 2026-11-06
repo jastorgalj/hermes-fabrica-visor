@@ -18,7 +18,7 @@ from urllib.parse import unquote, parse_qs
 
 FAILURE_OUTCOMES = frozenset({'crashed', 'rate_limited', 'reclaimed', 'gave_up'})
 
-OPTIONAL_COLS = frozenset({'block_kind', 'model_override', 'provider_override'})
+OPTIONAL_COLS = frozenset({'block_kind', 'model_override', 'provider_override', 'started_at'})
 
 REQUIRED_TASK_COLS = (
     'id', 'title', 'assignee', 'status', 'created_at', 'completed_at'
@@ -134,7 +134,7 @@ def _group_key(title: str) -> str:
 # ---------------------------------------------------------------------------
 
 def api_groups(conn: sqlite3.Connection, known_cols: set) -> list:
-    """GET /api/groups — Array de grupos con conteos."""
+    """GET /api/groups — Array de grupos con conteos, ordenado por last_activity DESC."""
     # Columnas a seleccionar (solo las que existen)
     extra = [c for c in OPTIONAL_COLS if c in known_cols]
     col_list = ', '.join(list(REQUIRED_TASK_COLS) + extra)
@@ -155,6 +155,7 @@ def api_groups(conn: sqlite3.Connection, known_cols: set) -> list:
                 'task_count': 0,
                 'running_count': 0,
                 'blocked_input_count': 0,
+                'last_activity': None,
             }
         g = groups[key]
         g['task_count'] += 1
@@ -165,8 +166,17 @@ def api_groups(conn: sqlite3.Connection, known_cols: set) -> list:
             and task.get('block_kind') == 'needs_input'
         ):
             g['blocked_input_count'] += 1
+        # last_activity: max(started_at) del grupo
+        sa = task.get('started_at')
+        if sa is not None:
+            current = g['last_activity']
+            g['last_activity'] = max(current, sa) if current is not None else sa
 
-    return list(groups.values())
+    # Ordenar DESC por last_activity (None al final), desempate ASC por key
+    return sorted(
+        groups.values(),
+        key=lambda g: (g['last_activity'] is None, -(g['last_activity'] or 0), g['key']),
+    )
 
 
 def api_group(

@@ -1257,5 +1257,171 @@ class TestTimelineAndWorkerLogHttp(unittest.TestCase):
         self.assertTrue(data['truncated'])
 
 
+
+
+# ---------------------------------------------------------------------------
+# Schema con started_at en tasks (para tests de T7)
+# ---------------------------------------------------------------------------
+
+SCHEMA_WITH_STARTED_AT = """
+CREATE TABLE tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    assignee TEXT,
+    status TEXT,
+    block_kind TEXT,
+    model_override TEXT,
+    provider_override TEXT,
+    created_at INTEGER,
+    completed_at INTEGER,
+    started_at INTEGER
+);
+CREATE TABLE task_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT,
+    profile TEXT,
+    outcome TEXT,
+    started_at INTEGER,
+    ended_at INTEGER
+);
+CREATE TABLE task_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT,
+    run_id INTEGER,
+    kind TEXT,
+    payload TEXT,
+    created_at INTEGER
+);
+CREATE TABLE task_links (
+    parent_id TEXT,
+    child_id TEXT
+);
+CREATE TABLE task_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT,
+    author TEXT,
+    body TEXT,
+    created_at INTEGER
+);
+"""
+
+# ---------------------------------------------------------------------------
+# Tests HTTP de /api/groups: last_activity y orden DESC (T7)
+#
+# Protocolo TDD:
+#   RED  → sin last_activity/sort en server.py, los tests fallan.
+#   GREEN → con la implementación de T7, los tests pasan.
+#   Ruptura documentada en metadata.verification del handoff.
+# ---------------------------------------------------------------------------
+
+
+class TestApiGroupsLastActivityHttp(unittest.TestCase):
+    """
+    Tests del endpoint HTTP /api/groups con campo last_activity y orden DESC.
+    Grupos de prueba:
+      ALPHA: started_at = [1000, 3000]           → last_activity = 3000
+      BETA:  started_at = [2000, 5000]           → last_activity = 5000
+      GAMMA: started_at = [1500]                 → last_activity = 1500
+      ANNA:  started_at = [5000]                 → last_activity = 5000 (empate con BETA)
+      ZETA:  started_at = [None]                 → last_activity = None
+    Orden esperado: ANNA, BETA (empate 5000 → key ASC), ALPHA (3000), GAMMA (1500), ZETA (null)
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.db_path, cls.wconn = make_db(SCHEMA_WITH_STARTED_AT)
+        cls.wconn.executemany(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
+            [
+                # (id, title, assignee, status, block_kind, model_override, provider_override, created_at, completed_at, started_at)
+                ('ta1', 'ALPHA tarea-1', 'coder', 'done',    None, None, None, 100, None, 1000),
+                ('ta2', 'ALPHA tarea-2', 'coder', 'running', None, None, None, 100, None, 3000),
+                ('tb1', 'BETA tarea-1',  'coder', 'done',    None, None, None, 100, None, 2000),
+                ('tb2', 'BETA tarea-2',  'coder', 'running', None, None, None, 100, None, 5000),
+                ('tg1', 'GAMMA tarea-1', 'coder', 'done',    None, None, None, 100, None, 1500),
+                ('tn1', 'ANNA tarea-1',  'coder', 'running', None, None, None, 100, None, 5000),
+                ('tz1', 'ZETA tarea-1',  'coder', 'todo',    None, None, None, 100, None, None),
+            ]
+        )
+        cls.wconn.commit()
+
+        from server import KanbanServer, KanbanHandler
+        ready = threading.Event()
+        holder = {}
+
+        def _serve():
+            srv = KanbanServer(('127.0.0.1', 0), KanbanHandler, cls.db_path)
+            holder['srv'] = srv
+            holder['port'] = srv.server_address[1]
+            ready.set()
+            try:
+                srv.serve_forever()
+            finally:
+                srv.server_close()
+                srv.conn.close()
+
+        cls._srv_thread = threading.Thread(target=_serve, daemon=True)
+        cls._srv_thread.start()
+        if not ready.wait(10):
+            raise RuntimeError('el servidor de test no arrancó')
+        cls.srv = holder['srv']
+        cls.port = holder['port']
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls._srv_thread.join(10)
+        cls.wconn.close()
+        os.unlink(cls.db_path)
+
+    def _get(self, path):
+        url = f'http://127.0.0.1:{self.port}{path}'
+        try:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
+
+    def _groups(self):
+        status, data = self._get('/api/groups')
+        self.assertEqual(status, 200)
+        return data
+
+    def test_most_recent_group_first(self):
+        """El grupo con last_activity mayor (BETA/ANNA=5000) precede a ALPHA (3000)."""
+        groups = self._groups()
+        keys = [g['key'] for g in groups]
+        # ALPHA (3000) debe aparecer DESPUÉS de cualquier grupo con 5000
+        idx_alpha = keys.index('ALPHA')
+        for key in ('ANNA', 'BETA'):
+            idx = keys.index(key)
+            self.assertLess(idx, idx_alpha,
+                f'{key} (last_activity=5000) debe ir antes de ALPHA (3000)')
+
+    def test_last_activity_field_present(self):
+        """Todos los grupos tienen el campo last_activity."""
+        groups = self._groups()
+        for g in groups:
+            self.assertIn('last_activity', g,
+                f"Grupo '{g['key']}' no tiene campo last_activity")
+
+    def test_group_without_started_at_is_last(self):
+        """ZETA (sin started_at) aparece al final del array."""
+        groups = self._groups()
+        self.assertEqual(groups[-1]['key'], 'ZETA',
+            f"ZETA (null) debe ser el último; orden={[g['key'] for g in groups]}")
+        self.assertIsNone(groups[-1]['last_activity'])
+
+    def test_tiebreak_by_key_ascending(self):
+        """ANNA y BETA tienen last_activity=5000; ANNA < BETA → ANNA primero."""
+        groups = self._groups()
+        keys = [g['key'] for g in groups]
+        idx_anna = keys.index('ANNA')
+        idx_beta = keys.index('BETA')
+        self.assertLess(idx_anna, idx_beta,
+            f'ANNA debe preceder a BETA (desempate por key ASC); orden={keys}')
+
+
 if __name__ == '__main__':
     unittest.main()
