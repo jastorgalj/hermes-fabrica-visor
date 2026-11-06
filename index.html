@@ -15,41 +15,43 @@
    literal fuera de :root: todo consume var(--...).
    ========================================================= */
 :root {
-  /* --- Base (tomados del dashboard de Hermes) --- */
-  --color-bg:            #041c1c;   /* --background */
-  --color-text:          #ffe6cb;   /* --midground */
+  /* --- Base (medidos de Hermes desktop, ventana darkmode, perfil nous) --- */
+  --color-bg:            #0d1015;
+  --color-text:          #e6edf3;
   --radius:              0.5rem;    /* --radius (.5rem) */
   --radius-sm:           0.375rem;
 
-  /* --- Superficies derivadas: teal un poco mas claro que el fondo --- */
-  --color-surface:       #0a2828;
-  --color-surface-2:     #103634;
-  --color-sidebar-bg:    #061f1f;
-  --color-sidebar-hover: #0e2f2d;
-  --color-sidebar-active:#14453f;
-  --color-header-bg:     #061f1f;
-  --color-panel-bg:      #061f1f;
+  /* --- Superficies: azul-gris oscuro, derivadas de Hermes desktop --- */
+  --color-surface:       #191b1f;   /* sidebar = surface */
+  --color-surface-2:     #272d3a;   /* item activo = superficie elevada */
+  --color-sidebar-bg:    #191b1f;   /* medido: sidebar Hermes desktop */
+  --color-sidebar-hover: #1e2430;   /* entre sidebar y active */
+  --color-sidebar-active:#272d3a;   /* medido: item activo Hermes desktop */
+  --color-header-bg:     #191b1f;   /* mismo que sidebar */
+  --color-panel-bg:      #0f1621;   /* medido: superficie azulada Hermes desktop */
 
-  /* --- Bordes: crema a baja opacidad sobre el teal --- */
-  --color-border:        rgba(255, 230, 203, 0.14);
-  --color-border-2:      rgba(255, 230, 203, 0.22);
+  /* --- Bordes: azul-blanco a baja opacidad sobre el fondo oscuro --- */
+  --color-border:        rgba(230, 237, 243, 0.12);
+  --color-border-2:      rgba(230, 237, 243, 0.20);
 
-  /* --- Texto derivado del crema --- */
-  --color-text-muted:    #cdb9a0;
-  --color-text-dim:      #a89882;
+  /* --- Texto derivado del azul-blanco --- */
+  --color-text-muted:    #94a3b8;   /* slate-400, 7.43:1 sobre #0d1015 */
+  --color-text-dim:      #7f97b9;   /* 6.38:1 sobre #0d1015, 4.62:1 sobre surface-2 */
 
-  /* --- Acento: verde de salida de Hermes (sin azul GitHub) --- */
-  --color-accent:        #34d399;
+  /* --- Acento: azul Hermes desktop (medido) --- */
+  --color-accent:        #4c89ff;
+  /* Derivado: acento como color de TEXTO (más claro para ≥4.5:1 en surface-2) */
+  --color-accent-text:   #5891ff;   /* 4.54:1 sobre surface-2 (#272d3a), 6.27:1 sobre bg */
 
-  /* --- Estado de cards (semanticos, legibles sobre el fondo teal) --- */
+  /* --- Estado de cards (semánticos, legibles sobre el fondo azul-gris) --- */
   --color-status-todo:      #37474f;
   --color-status-ready:     #1e5a8a;
   --color-status-running:   #0e6b4f;
   --color-status-review:    #8a5a12;
   --color-status-blocked:   #8a1f1f;
   --color-status-scheduled: #4a2b7a;
-  --color-status-done:      #3d4a45;   /* done apagado */
-  --color-status-archived:  #2a3532;
+  --color-status-done:      #2a3545;   /* azul-gris apagado (antes teal #3d4a45) */
+  --color-status-archived:  #1e2535;   /* azul-gris muy apagado (antes teal #2a3532) */
   --color-text-on-status:   #f9fafb;
 
   /* --- needs_input (rojo claro, legible sobre el rojo de blocked) --- */
@@ -58,20 +60,23 @@
   /* --- Chips --- */
   --color-chip-model-bg:   #6b3410;
   --color-chip-model-text: #ffd9b0;
-  --color-chip-flow-bg:    #0f4c46;
-  --color-chip-flow-text:  #9ff0e0;
+  --color-chip-flow-bg:    #1a3a5c;   /* azul oscuro (antes teal, ver T4) */
+  --color-chip-flow-text:  #93c5fd;   /* azul claro — 6.46:1 sobre chip-bg */
   --color-chip-status-bg:  rgba(0, 0, 0, 0.3);
 
   /* --- Indicador de estado API --- */
-  --color-ok:    #34d399;
+  --color-ok:    #34d399;   /* semántico verde, se conserva */
   --color-error: #f87171;
 
-  /* --- Flechas SVG y hover de card --- */
-  --color-arrow:             #5a7d78;
-  --color-card-hover-border: rgba(255, 230, 203, 0.35);
+  /* --- Flechas SVG (nuevas variables de trazo por estado) --- */
+  --color-arrow:             #94a3b8;   /* slate-400, 7.43:1 sobre #0d1015 */
+  --color-arrow-done:        #4ade80;   /* green-400, 10.94:1 sobre #0d1015 */
+  --color-arrow-running:     #38bdf8;   /* sky-400, 8.89:1 sobre #0d1015 */
+  --color-arrow-blocked:     #fb923c;   /* orange-400, 8.42:1 sobre #0d1015 */
+  --color-card-hover-border: rgba(76, 137, 255, 0.35);
 
   /* --- Outcomes de runs --- */
-  --color-run-running: #34d399;
+  --color-run-running: #34d399;   /* semántico verde, se conserva */
   --color-run-warning: #fbbf24;
 
   /* --- Timeline: colores por tipo de item (todos via var, cero literales fuera de :root) --- */
@@ -346,6 +351,12 @@ button {
   pointer-events: none;
   overflow: visible;
 }
+
+/* Colores de puntas de flecha por estado (sin literales, sin context-stroke) */
+.arrowhead-neutral { fill: var(--color-arrow); }
+.arrowhead-done    { fill: var(--color-arrow-done); }
+.arrowhead-running { fill: var(--color-arrow-running); }
+.arrowhead-blocked { fill: var(--color-arrow-blocked); }
 
 .dag-column {
   display: flex;
@@ -684,7 +695,7 @@ button {
 
 .timeline-item-expand {
   font-size: 0.6rem;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   margin-top: 0.2rem;
   cursor: pointer;
   background: none;
@@ -797,9 +808,21 @@ button {
         <div id="graph-container">
           <svg id="arrows-svg" xmlns="http://www.w3.org/2000/svg">
             <defs>
-              <marker id="arrowhead" markerWidth="8" markerHeight="6"
-                      refX="8" refY="3" orient="auto">
-                <polygon points="0 0, 8 3, 0 6" style="fill:var(--color-arrow)"/>
+              <marker id="arrowhead-neutral" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="14"
+                      refX="18" refY="7" orient="auto">
+                <polygon points="0 0, 18 7, 0 14" class="arrowhead-neutral"/>
+              </marker>
+              <marker id="arrowhead-done" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="14"
+                      refX="18" refY="7" orient="auto">
+                <polygon points="0 0, 18 7, 0 14" class="arrowhead-done"/>
+              </marker>
+              <marker id="arrowhead-running" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="14"
+                      refX="18" refY="7" orient="auto">
+                <polygon points="0 0, 18 7, 0 14" class="arrowhead-running"/>
+              </marker>
+              <marker id="arrowhead-blocked" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="14"
+                      refX="18" refY="7" orient="auto">
+                <polygon points="0 0, 18 7, 0 14" class="arrowhead-blocked"/>
               </marker>
             </defs>
           </svg>
@@ -1080,7 +1103,7 @@ function renderGraph(data) {
   }
 
   // --- Flechas SVG (después de que el DOM esté en página) ---
-  requestAnimationFrame(() => drawArrows(wrapper, svg, links, taskElements));
+  requestAnimationFrame(() => drawArrows(wrapper, svg, links, taskElements, tasks));
 }
 
 /* =========================================================
@@ -1152,10 +1175,12 @@ function buildTaskCard(task) {
 
 /* =========================================================
    FLECHAS SVG
-   Las coordenadas son relativas al contenedor #graph-wrapper
-   (position:relative). Se recalculan al hacer scroll/resize/refresh.
+   Las coordenadas son relativas a #graph-container (el padre directo
+   del SVG, position:relative). Se recalculan al hacer scroll/resize/refresh.
+   NOTA: usar containerRect, no wrapperRect — #graph-wrapper tiene padding
+   1.5rem (24 px) que desplazaría todas las puntas 24 px si se usara como origen.
    ========================================================= */
-function drawArrows(wrapper, svg, links, taskElements) {
+function drawArrows(wrapper, svg, links, taskElements, tasks) {
   clearArrows(svg);
 
   // Ajustar el SVG al tamaño del contenido scrollable
@@ -1163,9 +1188,23 @@ function drawArrows(wrapper, svg, links, taskElements) {
   svg.setAttribute('width',  sc.scrollWidth);
   svg.setAttribute('height', sc.scrollHeight);
 
-  const wrapperRect = wrapper.getBoundingClientRect();
-  const scrollLeft  = wrapper.scrollLeft;
-  const scrollTop   = wrapper.scrollTop;
+  // Origen = #graph-container (padre directo del SVG).
+  // getBoundingClientRect() ya incorpora el scroll del wrapper — no sumar scrollLeft/Top.
+  const containerRect = sc.getBoundingClientRect();
+
+  // Mapa status por task id (para T5: color por estado del padre)
+  const statusById = {};
+  for (const t of (tasks || [])) statusById[t.id] = t.status;
+
+  // Agrupar links por child_id y ordenar por parent_id (orden estable para T2)
+  const incomingByChild = {};
+  for (const link of links) {
+    if (!incomingByChild[link.child_id]) incomingByChild[link.child_id] = [];
+    incomingByChild[link.child_id].push(link.parent_id);
+  }
+  for (const childId in incomingByChild) {
+    incomingByChild[childId].sort();
+  }
 
   for (const link of links) {
     const parentEl = taskElements[link.parent_id];
@@ -1175,11 +1214,19 @@ function drawArrows(wrapper, svg, links, taskElements) {
     const pRect = parentEl.getBoundingClientRect();
     const cRect = childEl.getBoundingClientRect();
 
-    // Coordenadas relativas al contenedor + scroll
-    const srcX = pRect.right  - wrapperRect.left + scrollLeft;
-    const srcY = pRect.top + pRect.height / 2 - wrapperRect.top + scrollTop;
-    const dstX = cRect.left   - wrapperRect.left + scrollLeft;
-    const dstY = cRect.top + cRect.height / 2 - wrapperRect.top + scrollTop;
+    // Coordenadas relativas a #graph-container (origen del SVG).
+    // getBoundingClientRect() ya refleja el scroll del wrapper — sin sumar scrollLeft/Top.
+    const srcX = pRect.right  - containerRect.left;
+    const srcY = pRect.top + pRect.height / 2 - containerRect.top;
+    const dstX = cRect.left   - containerRect.left;
+
+    // Desplazamiento de llegada: separación máx 16 px (> alto punta 14), acotada por alto de card
+    const siblings = incomingByChild[link.child_id] || [];
+    const n       = siblings.length;
+    const idx     = siblings.indexOf(link.parent_id);
+    const baseY   = cRect.top + cRect.height / 2 - containerRect.top;
+    const spacing = n >= 2 ? Math.min(16, (cRect.height - 14) / (n - 1)) : 0;
+    const dstY    = n >= 2 ? baseY + (idx - (n - 1) / 2) * spacing : baseY;
 
     const midX = (srcX + dstX) / 2;
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -1187,9 +1234,21 @@ function drawArrows(wrapper, svg, links, taskElements) {
       `M ${srcX} ${srcY} C ${midX} ${srcY} ${midX} ${dstY} ${dstX} ${dstY}`
     );
     path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', 'var(--color-arrow)');
-    path.setAttribute('stroke-width', '2');
-    path.setAttribute('marker-end', 'url(#arrowhead)');
+    path.setAttribute('stroke-width', '2.5');
+
+    // Color por estado del padre (T5): variables CSS, sin literales
+    const st = statusById[link.parent_id];
+    const colorVar = st === 'done'    ? 'var(--color-arrow-done)'
+                   : st === 'running' ? 'var(--color-arrow-running)'
+                   : st === 'blocked' ? 'var(--color-arrow-blocked)'
+                   :                    'var(--color-arrow)';
+    const markerId = st === 'done'    ? 'arrowhead-done'
+                   : st === 'running' ? 'arrowhead-running'
+                   : st === 'blocked' ? 'arrowhead-blocked'
+                   :                    'arrowhead-neutral';
+    path.setAttribute('stroke', colorVar);
+    path.setAttribute('marker-end', `url(#${markerId})`);
+
     svg.appendChild(path);
   }
 }
@@ -1217,7 +1276,7 @@ function redrawArrows() {
   document.querySelectorAll('.task-card').forEach(el => {
     taskElements[el.dataset.taskId] = el;
   });
-  drawArrows(wrapper, svg, links, taskElements);
+  drawArrows(wrapper, svg, links, taskElements, groupData.tasks);
 }
 
 /* =========================================================
