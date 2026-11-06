@@ -808,21 +808,21 @@ button {
         <div id="graph-container">
           <svg id="arrows-svg" xmlns="http://www.w3.org/2000/svg">
             <defs>
-              <marker id="arrowhead-neutral" markerWidth="10" markerHeight="8"
-                      refX="10" refY="4" orient="auto">
-                <polygon points="0 0, 10 4, 0 8" class="arrowhead-neutral"/>
+              <marker id="arrowhead-neutral" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="14"
+                      refX="18" refY="7" orient="auto">
+                <polygon points="0 0, 18 7, 0 14" class="arrowhead-neutral"/>
               </marker>
-              <marker id="arrowhead-done" markerWidth="10" markerHeight="8"
-                      refX="10" refY="4" orient="auto">
-                <polygon points="0 0, 10 4, 0 8" class="arrowhead-done"/>
+              <marker id="arrowhead-done" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="14"
+                      refX="18" refY="7" orient="auto">
+                <polygon points="0 0, 18 7, 0 14" class="arrowhead-done"/>
               </marker>
-              <marker id="arrowhead-running" markerWidth="10" markerHeight="8"
-                      refX="10" refY="4" orient="auto">
-                <polygon points="0 0, 10 4, 0 8" class="arrowhead-running"/>
+              <marker id="arrowhead-running" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="14"
+                      refX="18" refY="7" orient="auto">
+                <polygon points="0 0, 18 7, 0 14" class="arrowhead-running"/>
               </marker>
-              <marker id="arrowhead-blocked" markerWidth="10" markerHeight="8"
-                      refX="10" refY="4" orient="auto">
-                <polygon points="0 0, 10 4, 0 8" class="arrowhead-blocked"/>
+              <marker id="arrowhead-blocked" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="14"
+                      refX="18" refY="7" orient="auto">
+                <polygon points="0 0, 18 7, 0 14" class="arrowhead-blocked"/>
               </marker>
             </defs>
           </svg>
@@ -1175,8 +1175,10 @@ function buildTaskCard(task) {
 
 /* =========================================================
    FLECHAS SVG
-   Las coordenadas son relativas al contenedor #graph-wrapper
-   (position:relative). Se recalculan al hacer scroll/resize/refresh.
+   Las coordenadas son relativas a #graph-container (el padre directo
+   del SVG, position:relative). Se recalculan al hacer scroll/resize/refresh.
+   NOTA: usar containerRect, no wrapperRect — #graph-wrapper tiene padding
+   1.5rem (24 px) que desplazaría todas las puntas 24 px si se usara como origen.
    ========================================================= */
 function drawArrows(wrapper, svg, links, taskElements, tasks) {
   clearArrows(svg);
@@ -1186,9 +1188,9 @@ function drawArrows(wrapper, svg, links, taskElements, tasks) {
   svg.setAttribute('width',  sc.scrollWidth);
   svg.setAttribute('height', sc.scrollHeight);
 
-  const wrapperRect = wrapper.getBoundingClientRect();
-  const scrollLeft  = wrapper.scrollLeft;
-  const scrollTop   = wrapper.scrollTop;
+  // Origen = #graph-container (padre directo del SVG).
+  // getBoundingClientRect() ya incorpora el scroll del wrapper — no sumar scrollLeft/Top.
+  const containerRect = sc.getBoundingClientRect();
 
   // Mapa status por task id (para T5: color por estado del padre)
   const statusById = {};
@@ -1212,17 +1214,19 @@ function drawArrows(wrapper, svg, links, taskElements, tasks) {
     const pRect = parentEl.getBoundingClientRect();
     const cRect = childEl.getBoundingClientRect();
 
-    // Coordenadas relativas al contenedor + scroll
-    const srcX = pRect.right  - wrapperRect.left + scrollLeft;
-    const srcY = pRect.top + pRect.height / 2 - wrapperRect.top + scrollTop;
-    const dstX = cRect.left   - wrapperRect.left + scrollLeft;
+    // Coordenadas relativas a #graph-container (origen del SVG).
+    // getBoundingClientRect() ya refleja el scroll del wrapper — sin sumar scrollLeft/Top.
+    const srcX = pRect.right  - containerRect.left;
+    const srcY = pRect.top + pRect.height / 2 - containerRect.top;
+    const dstX = cRect.left   - containerRect.left;
 
-    // Desplazamiento de llegada: 10 px centrados para n >= 2 entrantes (T2)
+    // Desplazamiento de llegada: separación máx 16 px (> alto punta 14), acotada por alto de card
     const siblings = incomingByChild[link.child_id] || [];
-    const n   = siblings.length;
-    const idx = siblings.indexOf(link.parent_id);
-    const baseY = cRect.top + cRect.height / 2 - wrapperRect.top + scrollTop;
-    const dstY  = n >= 2 ? baseY + (idx - (n - 1) / 2) * 10 : baseY;
+    const n       = siblings.length;
+    const idx     = siblings.indexOf(link.parent_id);
+    const baseY   = cRect.top + cRect.height / 2 - containerRect.top;
+    const spacing = n >= 2 ? Math.min(16, (cRect.height - 14) / (n - 1)) : 0;
+    const dstY    = n >= 2 ? baseY + (idx - (n - 1) / 2) * spacing : baseY;
 
     const midX = (srcX + dstX) / 2;
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');

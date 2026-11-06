@@ -212,14 +212,16 @@ THEN la sección muestra "Sin log disponible" y no emite más peticiones
 
 ### Requirement: Conectores SVG con punta y trazo legibles
 Los conectores SHALL ser una curva Bezier cubica con controles en `midX = (srcX + dstX) / 2`
-y `stroke-width` de 2.5 px. El marker MUST ser `markerWidth="10"` `markerHeight="8"`,
-poligono `points="0 0, 10 4, 0 8"`. Con 2 o mas conectores entrantes en una card, cada
-punto de llegada MUST separarse 10 px del siguiente, centrados en la card.
+y `stroke-width` de 2.5 px. El marker MUST declarar `markerUnits="userSpaceOnUse"`,
+`markerWidth="18"` `markerHeight="14"`, `refX="18"` `refY="7"`,
+poligono `points="0 0, 18 7, 0 14"`. Con 2 o mas conectores entrantes en una card, el
+espaciado SHALL ser `spacing = Math.min(16, (cRect.height - 14) / (n - 1))` px,
+puntos centrados en la card.
 
 #### Scenario: Cards con distinta altura
 WHEN la card A y la card B tienen centros verticales distintos
 THEN el conector muestra una curva en S, no una recta, y la punta de flecha mide
-10x8 en el elemento marker
+18x14 px reales (userSpaceOnUse) en el elemento marker
 
 #### Scenario: Cards en la misma fila
 WHEN la card A y la card B tienen el mismo centro vertical
@@ -228,8 +230,15 @@ aceptado, no es un defecto)
 
 #### Scenario: Cuatro conectores convergen en una card
 WHEN el QA abre el grupo MTD-360 y la card `t_8ab670cd` recibe 4 conectores
-THEN las 4 puntas de flecha se distinguen una de otra, con 10 px entre puntos de
-llegada consecutivos
+THEN los bounding boxes de los 4 polygons de punta (alto=14 px cada uno) no se
+intersectan entre si: para cada par consecutivo, el borde inferior de la punta i
+es menor que el borde superior de la punta i+1
+
+#### Scenario: Extremos de conector tocan los bordes reales de las cards
+WHEN el QA mide el extremo de cada conector en el DOM
+THEN el extremo dstX está a <= 1 px del borde izquierdo de la card hija
+AND el srcX está a <= 1 px del borde derecho de la card padre
+AND el dstY está dentro del alto de la card hija
 
 ### Requirement: Color de conectores SVG legible sobre fondo
 El trazo del conector SHALL leer su color de `var(--color-arrow)` en `:root`;
